@@ -198,12 +198,13 @@ private:
 			unsigned long long timeout = 100000;
 
 			if (pingTcpServer("127.0.0.1", session.expectedStartPort, &timeout)) {
-				boost::lock_guard<boost::mutex> l(syncher);
+				boost::unique_lock<boost::mutex> l(syncher);
 				socketIsNowPingable = true;
 				finishState = FINISH_SUCCESS;
 				wakeupEventLoop();
+				cond.wait(l);
 			} else {
-				syscalls::usleep(50000);
+				syscalls::usleep(50000); // 1/20th of sec
 			}
 		}
 	}

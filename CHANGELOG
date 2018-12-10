@@ -1,6 +1,8 @@
 Release 6.0.1 (Not yet released)
 -------------
 
+ * Fixes an issue during the GLS startup handshake where ephemeral ports could be exhausted. Closes GH-2144.
+
 
 Release 6.0.0
 -------------

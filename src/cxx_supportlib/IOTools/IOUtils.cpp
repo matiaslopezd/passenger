@@ -671,17 +671,17 @@ setupNonBlockingTcpSocket(NTCP_State &state, const StaticString &hostname, int p
 
 bool
 connectToTcpServer(NTCP_State &state) {
-	int ret;
-
-	ret = syscalls::connect(state.fd, state.res->ai_addr, state.res->ai_addrlen);
-	if (ret == -1) {
-		if (errno == EINPROGRESS || errno == EWOULDBLOCK) {
+	if (syscalls::connect(state.fd, state.res->ai_addr, state.res->ai_addrlen) == -1) {
+		switch(errno) {
+		case EINPROGRESS:
+		case EWOULDBLOCK:
+		case EADDRNOTAVAIL:
 			return false;
-		} else if (errno == EISCONN) {
+		case EISCONN:
 			freeaddrinfo(state.res);
 			state.res = NULL;
 			return true;
-		} else {
+		default:
 			int e = errno;
 			string message = "Cannot connect to TCP socket '";
 			message.append(state.hostname);
@@ -755,16 +755,29 @@ pingTcpServer(const StaticString &host, unsigned int port, unsigned long long *t
 	// Cannot connect to the port yet, but that may not mean the
 	// port is unavailable. So poll the socket.
 
-	bool connectable;
 	try {
-		connectable = waitUntilWritable(state.fd, timeout);
+		if (!waitUntilWritable(state.fd, timeout)) {
+			// Timed out. Assume port is not available.
+			return false;
+		} else {
+			int err = 0;
+			socklen_t len = sizeof(int);
+			if (getsockopt(state.fd, SOL_SOCKET, SO_ERROR, &err, &len) == 0) {
+				if (err == 0) {
+					freeaddrinfo(state.res);
+					state.res = NULL;
+					return true;
+				} else {
+					return false;
+				}
+			} else {
+				int e = errno;
+				throw SystemException("Error checking TCP socket status", e);
+			}
+		}
 	} catch (const SystemException &e) {
 		throw SystemException("Error polling TCP socket "
 			+ host + ":" + toString(port), e.code());
-	}
-	if (!connectable) {
-		// Timed out. Assume port is not available.
-		return false;
 	}
 
 	// Try to connect the socket one last time.
